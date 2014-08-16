@@ -1,20 +1,162 @@
-# Reproducible Research: Peer Assessment 1
-
+---
+title: "PeerAssessment1 - RepResearch"
+author: "Connie Zabarovskaya"
+date: "Monday, August 11, 2014"
+output: html_document
+---
 
 ## Loading and preprocessing the data
+The following chunk of code reads in the data from the zipped folder in GitHub repository; the folder is called activity.zip.
 
+```{r}
+stepsdata <- read.csv(suppressWarnings(unz("activity.zip", "activity.csv")))
+```
 
 
 ## What is mean total number of steps taken per day?
+First we aggregate the data by date using aggregate() function and passing sum() function to calculate the total number of steps taken each day.
+
+```{r}
+stepsByDay <- aggregate(stepsdata$steps, by=list(Day=stepsdata$date), sum, na.rm = TRUE)
+```
+
+Now build the histogram
 
 
+```{r}
+hist(stepsByDay$x)
+```
+
+To calculate the mean total number of steps taken per day, we take the mean of the same column as used in the histogram:
+
+```{r}
+mean(stepsByDay$x)
+```
+
+As you see the mean total number of steps taken per day is 9354
+
+To calculate the median total number of steps taken per day, we use the quantile function passing argument 0.5 for 50%:
+
+```{r}
+quantile(stepsByDay$x, 0.5)
+```
+
+As you see the median total number of steps taken per day is 10395
 
 ## What is the average daily activity pattern?
 
+First we aggregate the original data using aggregate() function and passing mean() function to get average number of steps taken across all days per each 5-min period:
 
+```{r}
+stepsByInterval <- aggregate(stepsdata$steps, by=list(Interval=stepsdata$interval), mean, na.rm = TRUE)
+```
+
+Now make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis):
+
+```{r, echo=TRUE}
+plot(stepsByInterval$Interval, stepsByInterval$x, type = "l")
+```
+
+To answer which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps, we sort the transformed data set stepsByInterval in descending order by "x" and get the first row.
+
+```{r}
+stepsByInterval[order(stepsByInterval$x, decreasing = TRUE),][1,]
+```
+
+As you can see, the maximum number of steps is made during 835th interval, the average number of steps for this interval is 206.1698
 
 ## Imputing missing values
 
+There are multiple ways to calculate the total number of missing values in the dataset (i.e. the total number of rows with NAs). First we can look at the summary of data to figure out which column has NA's.
 
+```{r}
+summary(stepsdata)
+```
+
+As you can see only the first column has NA values, and the number of them is 2304. To double-check if this is the number of rows with NA values, we can try to subset only rows where steps are equal NA, like this:
+
+```{r}
+nrow(subset(stepsdata, is.na(steps)))
+```
+
+The result is the same: 2304
+
+For my strategy for filling in all of the missing values in the dataset, I chose mean values for each 5-min interval. So that data is stored in the transformed data set above called "stepsByInterval". So the logic is that for each missing value corresponding to a particular interval I will assign the mean value for that period. This seemed more reasonable than assigning the average on a daily basis, because there seems to be more variation on the interval basis than on the daily basis.
+
+In the code below, I first create a new data set identical to the original one, and then loop through it to replace NA values by mean values for that interval
+
+```{r}
+newstepsdata <- stepsdata
+for (i in 1:length(newstepsdata$steps)) {
+    if (is.na(newstepsdata$steps[i])) {
+      newstepsdata$steps[i] <- subset(stepsByInterval$x, stepsByInterval$Interval == newstepsdata$interval[i])
+    }
+  }
+```
+
+In order to make a histogram of the total number of steps taken each day after imputing the missing values, we need to aggregate the data by date using aggregate() function and passing sum() function to calculate the total number of steps taken each day, as we did before on the original data set.
+
+```{r}
+newStepsByDay <- aggregate(newstepsdata$steps, by=list(Day=newstepsdata$date), sum, na.rm = TRUE)
+```
+
+Now we can make a histogram of that data.
+
+```{r}
+hist(newStepsByDay$x)
+```
+
+To calculate the mean total number of steps taken per day after imputing missing values, we take the mean of the same column as used in the histogram:
+
+```{r}
+mean(newStepsByDay$x)
+```
+
+As you see the mean total number of steps taken per day is 10766
+
+To calculate the median total number of steps taken per day after imputing missing values, we use the quantile function passing argument 0.5 for 50%:
+
+```{r}
+quantile(newStepsByDay$x, 0.5)
+```
+
+As you can see the median value is 10766, the same as mean.
+
+
+The mean and median values after imputing missing values obviuosly differ from the ones before the imputing. The new values are not only higher due to NA being gone, but they are also now equal between each other (mean=median). The effect of imputing the missing values using average number of steps by interval, was that the average total number of steps each day is higher than before (no more NA's) and that the mean and median are now equal.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+To create a new factor variable in the dataset with two levels - "weekday" and "weekend" indicating whether a given date is a weekday or weekend day, I used the weekdays() function. But first the date column needs to be converted to Date, because as you can see below right now it's a Factor.
+
+```{r}
+#identify the class of date column
+str(newstepsdata)
+#convert the date column to Date class
+newstepsdata$date <- as.Date(newstepsdata$date, format = "%Y-%m-%d")
+#add the day_type variable
+newstepsdata$day_type <- as.factor(weekdays(newstepsdata$date))
+#recode that variable by weekday or weekend values
+levels(newstepsdata$day_type)[levels(newstepsdata$day_type)=="Saturday" | levels(newstepsdata$day_type)=="Sunday"] <- "weekend"
+levels(newstepsdata$day_type)[levels(newstepsdata$day_type)!="weekend"] <- "weekday"
+```
+
+Now let's summarize the data by mean of steps taken grouped by day_type and interval. In this case it seems more convenient to use the ddply() function from plyr package. However, it would give the same result as aggregate(). 
+
+ATTENTION: For whatever reason, the mean values in the result of code below are not what you would expect them to be if you use straight up mean(). I'm not a mathematician, so not sure what the deal is, but it does the job correctly though.
+
+```{r}
+library(plyr)
+steps_daytype_summary <- ddply(newstepsdata, c("interval", "day_type"),
+                               summarise, mean_steps = mean(steps))
+```
+
+Using ggplot2 package, I am building a panel plot containing a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all weekday days or weekend days (y-axis).  
+
+```{r}
+library(ggplot2)
+panelPlot <- ggplot(data=steps_daytype_summary, aes(x=interval, y=mean_steps)) + geom_line()
+panelPlot + facet_wrap( ~ day_type, ncol = 1)
+```
+
+In conclusion, judging from the plot, there does seem to be a difference between activity patterns on weekdays as opposed to weekends.
